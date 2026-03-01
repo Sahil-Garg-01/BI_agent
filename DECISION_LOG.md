@@ -195,16 +195,49 @@ To handle messy real-world business data:
 
 This prevents misleading financial analysis.
 
+## 6. Tech Stack Justification
+
+### Frontend: Streamlit
+**Why**: Rapid development of conversational UI with built-in session state, chat components, error messaging.  
+**Alternative considered**: React/Next.js would require more boilerplate. FastAPI alone insufficient for UI.  
+**Decision**: Streamlit allows focus on core logic within timeline constraints.
+
+### Agent: Google Gemini 2.5 Flash Lite
+**Why**: Native function-calling (similar to MCP), fast inference, no complex orchestration needed.  
+**Alternative considered**: GPT-4, Claude (cost/latency), LLaMA (requires deployment infrastructure).  
+**Decision**: Gemini balance cost, speed, and capability for BI agent task.
+
+### Data API: Monday.com GraphQL
+**Why**: Direct GraphQL API with precise column selection; native pagination support.  
+**Alternative considered**: Monday.com REST API (more verbose responses).  
+**Decision**: GraphQL more efficient; smaller payloads for real-time dashboard use.
+
+### Backend: FastAPI
+**Why**: Lightweight, fast async HTTP server with built-in validation (Pydantic).  
+**Alternative considered**: Flask (overkill), Django (too heavy for microservice).  
+**Decision**: FastAPI provides production-quality routing with minimal overhead.
+
+### Runtime: Python 3.13
+**Why**: Ecosystem of data libraries (pandas-compatible normalization); Google SDK support comprehensive.  
+**Alternative considered**: Node.js (middleware overhead), Go (overkill for data pipeline).  
+**Decision**: Python most natural for data transformation and BI logic.
+
+### Deployment: Railway (backend) + Streamlit Cloud (frontend)
+**Why**: Zero-config Python deployment; free tier sufficient for demo; auto-scaling handled.  
+**Alternative considered**: Docker/Kubernetes (overengineering for assignment), self-hosted (infrastructure overhead).  
+**Decision**: Cloud platforms ensure "no setup required by evaluator" requirement.
+
+
 ## 7. Conclusion
 
 The final solution:
 
-- Integrates live with monday.com
-- Handles messy business data robustly
-- Supports dynamic BI-style queries
-- Maintains conversational context
-- Produces executive-level insights
-- Displays visible tool execution traces
-- Avoids caching and overengineering
+- Integrates live with monday.com ✅ (no caching)
+- Handles messy business data robustly ✅ (quality flags, safe parsing)
+- Supports dynamic BI-style queries ✅ (filtering + grouping + aggregation)
+- Maintains conversational context ✅ (multi-turn filter persistence)
+- Produces executive-level insights ✅ (structured response format)
+- Displays visible tool execution traces ✅ (Execution Trace expander)
+- Gracefully handles errors ✅ (timeouts, API errors, validation)
 
-The system balances flexibility, reliability, and simplicity within the given time constraints and satisfies all core assignment requirements.
+The system balances flexibility, reliability, and simplicity while meeting all assignment requirements.
