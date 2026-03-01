@@ -16,7 +16,10 @@ def filter_by_quarter(date_str, quarter_filter):
     if not date_str or not quarter_filter:
         return True
 
-    dt = datetime.fromisoformat(date_str)
+    try:
+        dt = datetime.fromisoformat(date_str)
+    except (ValueError, TypeError):
+        return True
 
     current_q = (datetime.now().month - 1) // 3 + 1
     dt_q = (dt.month - 1) // 3 + 1
@@ -51,7 +54,7 @@ def analyze_pipeline_logic(deals, filters):
 
         filtered.append(d)
 
-    total_value = sum(d["value"] for d in filtered)
+    total_value = sum(d["value"] for d in filtered if d["value"] is not None)
 
     stage_dist = {}
     for d in filtered:
@@ -74,9 +77,9 @@ def analyze_revenue_logic(work_orders, filters):
             continue
         filtered.append(w)
 
-    total_billed = sum(w["billed_excl"] for w in filtered)
-    total_collected = sum(w["collected"] for w in filtered)
-    total_receivable = sum(w["receivable"] for w in filtered)
+    total_billed = sum(w["billed_excl"] for w in filtered if w["billed_excl"] is not None)
+    total_collected = sum(w["collected"] for w in filtered if w["collected"] is not None)
+    total_receivable = sum(w["receivable"] for w in filtered if w["receivable"] is not None)
 
     return {
         "total_billed": total_billed,
