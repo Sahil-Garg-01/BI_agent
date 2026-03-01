@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-MONDAY_API_KEY = os.getenv("MONDAY_API_KEY")
+MONDAY_API_KEY = os.getenv("MONDAY_API_KEY", "").strip()
 MONDAY_URL = "https://api.monday.com/v2"
 
 

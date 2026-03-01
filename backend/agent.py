@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY", "").strip())
 
 SYSTEM_PROMPT = """
 You are a BI Agent for Skylark Drones. Your goal: provide founder-level insights fast.
