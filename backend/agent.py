@@ -9,7 +9,7 @@ from google.genai import types
 
 from .monday_client import get_board_id_by_name, fetch_board_items
 from .normalization import normalize_deals, normalize_work_orders
-from .business_logic import analyze_pipeline_logic, analyze_revenue_logic
+from .business_logic import run_dynamic_query
 
 logger = logging.getLogger(__name__)
 
@@ -18,24 +18,23 @@ load_dotenv()
 client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
 SYSTEM_PROMPT = """
-You are a BI Agent for Skylark Drones. Your goal: provide founder-level insights fast.
+You are a Business Intelligence AI Agent for Skylark Drones.
 
-CORE RULES:
-1. Always use tools to fetch real data. Never fabricate.
-2. Maintain context: reuse filters across queries unless user changes them.
-3. Ask for missing critical filters instead of guessing.
+You answer executive-level business questions using LIVE monday.com data.
 
-OUTPUT STYLE:
-- Executive summary format: key metrics first, interpretation second.
-- Highlight risks, bottlenecks, and opportunities.
-- Do NOT list all records or dump raw JSON.
-- Be concise: prioritize insights over details.
+Rules:
+- Always use the query_data tool to fetch and analyze data.
+- Maintain conversational filters across turns (context-aware).
+- If required information is missing (e.g., sector), ask for clarification.
+- Support filtering by sector, stage, quarter, and other fields.
+- Support grouping (group_by) and dynamic metrics calculation.
+- Do not output raw JSON; provide concise executive summaries.
 
-DATA QUALITY:
-- Flag incomplete data when it affects conclusions.
-- State uncertainty clearly when data gaps exist.
-
-Your success metric: the founder makes a better decision faster.
+Response Format:
+1. Brief Summary
+2. Key Metrics (with numbers)
+3. Observations
+4. Risks or Opportunities
 """
 
 
@@ -45,26 +44,31 @@ tools = [
     types.Tool(
         function_declarations=[
             types.FunctionDeclaration(
-                name="analyze_pipeline",
-                description="Analyze pipeline health",
+                name="query_data",
+                description="Run dynamic queries on deals or work_orders with filtering, grouping, and metrics",
                 parameters={
                     "type": "object",
                     "properties": {
-                        "sector": {"type": "string"},
-                        "quarter": {"type": "string"},
-                        "stage": {"type": "string"}
-                    }
-                }
-            ),
-            types.FunctionDeclaration(
-                name="analyze_revenue",
-                description="Analyze revenue health",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "sector": {"type": "string"},
-                        "quarter": {"type": "string"}
-                    }
+                        "board": {
+                            "type": "string",
+                            "enum": ["deals", "work_orders"],
+                            "description": "Which board to query"
+                        },
+                        "filters": {
+                            "type": "object",
+                            "description": "Filter criteria (e.g., {\"sector\": \"renewables\", \"stage\": \"proposal\"})"
+                        },
+                        "group_by": {
+                            "type": "string",
+                            "description": "Field to group results by (e.g., 'sector', 'stage', 'quarter')"
+                        },
+                        "metrics": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Metrics to calculate (e.g., ['sum(value)', 'sum(billed_excl)'])"
+                        }
+                    },
+                    "required": ["board"]
                 }
             )
         ]
@@ -72,59 +76,67 @@ tools = [
 ]
 
 
-def execute_tool(tool_name, args, context, trace):
-
-    # Merge with previous filters
+def execute_tool(args: dict, context: dict, trace: list) -> dict:
+    """Execute dynamic query tool with filter context management."""
+    
+    # Merge new filters with persistent context
     context.setdefault("filters", {})
-    context["filters"].update({k: v for k, v in args.items() if v})
+    context["filters"].update({k: v for k, v in args.get("filters", {}).items() if v})
 
+    board = args.get("board")
     filters = context["filters"]
+    group_by = args.get("group_by")
+    metrics = args.get("metrics", [])
 
-    if tool_name == "analyze_pipeline":
+    logger.info(f"Executing query: board={board}, filters={filters}, group_by={group_by}, metrics={metrics}")
+    trace.append(f"📊 Querying {board} with filters: {filters}")
 
-        logger.info(f"filters: {filters}")
-        trace.append(f"Fetching Deals board with filters: {filters}")
+    try:
+        if board == "deals":
+            board_id = get_board_id_by_name("Deal funnel Data")
+            items = fetch_board_items(board_id)
+            data = normalize_deals(items)
+            logger.debug(f"Fetched {len(data)} deals")
 
-        board_id = get_board_id_by_name("Deal funnel Data")
-        items = fetch_board_items(board_id)
-        deals = normalize_deals(items)
-        logger.debug(f"Fetched {len(deals)} deals")
+        elif board == "work_orders":
+            board_id = get_board_id_by_name("Work_Order_Tracker Data")
+            items = fetch_board_items(board_id)
+            data = normalize_work_orders(items)
+            logger.debug(f"Fetched {len(data)} work orders")
 
-        result = analyze_pipeline_logic(deals, filters)
-        logger.info(f"Pipeline result: {result}")
+        else:
+            logger.error(f"Invalid board: {board}")
+            return {"error": f"Invalid board: {board}. Must be 'deals' or 'work_orders'."}
 
-        trace.append("Pipeline metrics calculated")
+        result = run_dynamic_query(data, filters, group_by, metrics, board)
+        logger.info(f"Query result: {result}")
+        trace.append("✅ Data processed successfully")
+        
         return result
 
-    elif tool_name == "analyze_revenue":
-
-        trace.append(f"Fetching Work Orders board with filters: {filters}")
-        logger.info(f"filters: {filters}")
-
-        board_id = get_board_id_by_name("Work_Order_Tracker Data")
-        items = fetch_board_items(board_id)
-        work_orders = normalize_work_orders(items)
-
-        result = analyze_revenue_logic(work_orders, filters)
-        logger.info(f"Revenue result: {result}")
-
-        trace.append("Revenue metrics calculated")
-        return result
-
-    return {}
+    except Exception as e:
+        logger.error(f"Tool execution error: {str(e)}", exc_info=True)
+        return {"error": str(e)}
 
 
-def run_agent(user_query: str, context: dict):
-
-    logger.info(f"Running agent with query: {user_query[:50]}...")
+def run_agent(user_query: str, context: dict) -> tuple:
+    """Run multi-turn agent loop with dynamic queries."""
+    
+    logger.info(f"Starting agent with query: {user_query[:60]}...")
     trace = []
 
     history = [
         {"role": "user", "parts": [{"text": user_query}]}
     ]
 
-    while True:
+    iteration = 0
+    max_iterations = 5
 
+    while iteration < max_iterations:
+        iteration += 1
+
+        logger.debug(f"Agent iteration {iteration}")
+        
         response = client.models.generate_content(
             model="gemini-2.5-flash-lite",
             contents=history,
@@ -137,7 +149,8 @@ def run_agent(user_query: str, context: dict):
         if response.function_calls:
 
             for fc in response.function_calls:
-
+                logger.info(f"Tool called: {fc.name}")
+                
                 history.append({
                     "role": "model",
                     "parts": [{
@@ -148,7 +161,7 @@ def run_agent(user_query: str, context: dict):
                     }]
                 })
 
-                result = execute_tool(fc.name, fc.args, context, trace)
+                result = execute_tool(fc.args, context, trace)
 
                 history.append({
                     "role": "user",
@@ -162,5 +175,6 @@ def run_agent(user_query: str, context: dict):
         break
 
     final_text = response.text or "No meaningful response generated."
+    logger.info(f"Agent response generated ({len(final_text)} chars)")
 
     return final_text, trace, context
