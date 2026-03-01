@@ -2,36 +2,31 @@
 
 import os
 import json
-import google.genai as genai
-from google.genai import types
 from dotenv import load_dotenv
+from google import genai
+from google.genai import types
+
 from .monday_client import get_board_id_by_name, fetch_board_items
-from .normalization import normalize_deals
+from .normalization import normalize_deals, normalize_work_orders
+from .business_logic import analyze_pipeline_logic, analyze_revenue_logic
 
 load_dotenv()
 
 client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
-system_prompt = """
-You are a business intelligence AI agent for Skylark Drones.
-Answer founder-level business questions.
-Use tools when necessary.
-If multiple sectors relate to a question (e.g., energy),
-analyze each and then combine insights before answering.
-Provide executive-level insights, not raw data.
+SYSTEM_PROMPT = """
+You are a Business Intelligence AI agent for Skylark Drones.
+
+Guidelines:
+- Always use tools for business data.
+- Provide executive-level insights.
+- If sector like "energy" is asked, it may include powerline and renewables.
+- Highlight risks, revenue gaps, and stage maturity.
+- Do not dump raw data.
 """
 
-def safe_extract_text(response):
-    if response.candidates and response.candidates[0].content.parts:
-        text_parts = [
-            p.text for p in response.candidates[0].content.parts
-            if hasattr(p, "text") and p.text
-        ]
-        return "\n".join(text_parts) if text_parts else "No meaningful response generated."
-    else:
-        return "No meaningful response generated."
 
-# ---- TOOL DEFINITIONS ----
+# -------- TOOL DEFINITIONS --------
 
 tools = [
     types.Tool(
@@ -39,117 +34,137 @@ tools = [
             types.FunctionDeclaration(
                 name="analyze_pipeline",
                 description="Analyze pipeline health for a given sector and time period",
-                parameters=types.Schema(
-                    type="object",
-                    properties={
-                        "sector": types.Schema(type="string", description="Sector name like mining, powerline, renewables"),
-                        "quarter": types.Schema(type="string", description="Time period like this_quarter, next_quarter, or all")
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "sector": {"type": "string"},
+                        "quarter": {"type": "string"}
                     },
-                    required=["sector"]
-                )
+                    "required": ["sector"]
+                }
+            ),
+            types.FunctionDeclaration(
+                name="analyze_revenue",
+                description="Analyze revenue health for a given sector",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "sector": {"type": "string"}
+                    },
+                    "required": ["sector"]
+                }
             )
         ]
     )
 ]
 
 
-# ---- TOOL EXECUTION ----
+# -------- TOOL EXECUTION --------
 
-from datetime import datetime
+def execute_tool(tool_name, args, trace):
 
-def get_current_quarter():
-    now = datetime.now()
-    return (now.month - 1) // 3 + 1, now.year
-
-
-def execute_tool(tool_name, arguments, trace):
     if tool_name == "analyze_pipeline":
-        sector = arguments.get("sector", "").lower()
-        quarter_filter = arguments.get("quarter", "all")
+        sector = args.get("sector")
+        quarter = args.get("quarter", "all")
 
-        trace.append(f"Calling Monday API for sector: {sector}")
+        trace.append(f"Fetching Deals board for sector: {sector}")
 
         board_id = get_board_id_by_name("Deal funnel Data")
         items = fetch_board_items(board_id)
         deals = normalize_deals(items)
 
-        trace.append(f"Fetched {len(deals)} deal records")
-        available_sectors = set(d.get("sector") for d in deals if d.get("sector"))
-        trace.append(f"Available sectors in data: {available_sectors}")
-
-        # FILTER BY SECTOR
-        deals = [d for d in deals if d.get("sector") == sector]
-
-        # FILTER BY QUARTER
-        if quarter_filter == "this_quarter":
-            q, year = get_current_quarter()
-
-            filtered = []
-            for d in deals:
-                date_str = d.get("tentative_close_date")
-                if date_str:
-                    date_obj = datetime.fromisoformat(date_str)
-                    deal_q = (date_obj.month - 1) // 3 + 1
-                    if deal_q == q and date_obj.year == year:
-                        filtered.append(d)
-
-            deals = filtered
-
-        total_value = sum(d.get("value", 0) for d in deals)
-
-        stage_distribution = {}
-        for d in deals:
-            stage = d.get("stage") or "Unknown"
-            stage_distribution[stage] = stage_distribution.get(stage, 0) + 1
-
-        result = {
-            "sector": sector,
-            "deal_count": len(deals),
-            "total_pipeline_value": total_value,
-            "stage_distribution": stage_distribution
-        }
+        result = analyze_pipeline_logic(deals, sector, quarter)
 
         trace.append("Pipeline metrics calculated")
-
         return result
 
-    return None
+
+    elif tool_name == "analyze_revenue":
+        sector = args.get("sector")
+
+        trace.append(f"Fetching Work Orders board for sector: {sector}")
+
+        board_id = get_board_id_by_name("Work_Order_Tracker Data")
+        items = fetch_board_items(board_id)
+        work_orders = normalize_work_orders(items)
+
+        result = analyze_revenue_logic(work_orders, sector)
+
+        trace.append("Revenue metrics calculated")
+        return result
 
 
-# ---- AGENT CORE ----
+    return {}
+
+
+# -------- AGENT LOOP --------
 
 def run_agent(user_query: str):
+
     trace = []
 
     history = [
-        types.Content(role="user", parts=[types.Part(text=user_query)])
+        {
+            "role": "user",
+            "parts": [{"text": user_query}]
+        }
     ]
 
     while True:
+
         response = client.models.generate_content(
             model="gemini-2.5-flash-lite",
             contents=history,
             config=types.GenerateContentConfig(
                 tools=tools,
-                system_instruction=system_prompt
+                system_instruction=SYSTEM_PROMPT
             )
         )
 
+        # If tool calls exist
         if response.function_calls:
-            # Append model response
-            history.append(response.candidates[0].content)
 
-            for function_call in response.function_calls:
-                tool_name = function_call.name
-                arguments = function_call.args
+            for fc in response.function_calls:
 
-                tool_result = execute_tool(tool_name, arguments, trace)
+                tool_name = fc.name
+                args = fc.args
 
-                function_response_part = types.Part.from_function_response(
-                    name=tool_name,
-                    response=tool_result
-                )
-                history.append(types.Content(role="tool", parts=[function_response_part]))
-        else:
-            # No tool call, return the text response
-            return safe_extract_text(response), trace
+                # Append model tool call
+                history.append({
+                    "role": "model",
+                    "parts": [{
+                        "function_call": {
+                            "name": tool_name,
+                            "args": args
+                        }
+                    }]
+                })
+
+                result = execute_tool(tool_name, args, trace)
+
+                # Append tool response as user message (valid for google.genai SDK)
+                history.append({
+                    "role": "user",
+                    "parts": [{
+                        "function_response": {
+                            "name": tool_name,
+                            "response": result
+                        }
+                    }]
+                })
+
+            continue
+
+        break
+
+    # Extract final text
+    if response.candidates and response.candidates[0].content.parts:
+        text_parts = [
+            p.text for p in response.candidates[0].content.parts
+            if hasattr(p, "text") and p.text
+        ]
+        final_text = "\n".join(text_parts)
+    else:
+        final_text = "No meaningful response generated."
+
+    return final_text, trace

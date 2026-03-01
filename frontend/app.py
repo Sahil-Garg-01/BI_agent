@@ -10,18 +10,20 @@ st.title("Skylark Drones BI Agent")
 user_input = st.chat_input("Ask a business question...")
 
 if user_input:
-    with st.spinner("Thinking..."):
-        response = requests.post(
+    with st.spinner("Analyzing..."):
+        res = requests.post(
             BACKEND_URL,
             json={"message": user_input}
         )
-        if response.status_code == 200:
-            data = response.json()
-            st.write("### Response")
+
+        if res.status_code == 200:
+            data = res.json()
+
+            st.subheader("Response")
             st.write(data["response"])
 
-            st.write("### Tool Trace")
+            st.subheader("Tool Trace")
             for t in data["trace"]:
                 st.write("-", t)
         else:
-            st.error(f"Backend error: {response.status_code} - {response.text}")
+            st.error("Backend error")

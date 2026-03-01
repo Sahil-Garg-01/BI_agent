@@ -7,6 +7,7 @@ load_dotenv()
 MONDAY_API_KEY = os.getenv("MONDAY_API_KEY")
 MONDAY_URL = "https://api.monday.com/v2"
 
+
 def run_query(query: str):
     headers = {
         "Authorization": MONDAY_API_KEY,
@@ -25,8 +26,6 @@ def run_query(query: str):
     return response.json()
 
 
-
-
 def get_board_id_by_name(board_name: str):
     query = """
     query {
@@ -43,7 +42,7 @@ def get_board_id_by_name(board_name: str):
         if board["name"] == board_name:
             return board["id"]
 
-    raise Exception(f"Board {board_name} not found")
+    raise Exception(f"Board '{board_name}' not found")
 
 
 def fetch_board_items(board_id: int):
@@ -57,7 +56,6 @@ def fetch_board_items(board_id: int):
             column_values {{
               id
               text
-              value
             }}
           }}
         }}
@@ -67,19 +65,3 @@ def fetch_board_items(board_id: int):
 
     data = run_query(query)
     return data["data"]["boards"][0]["items_page"]["items"]
-
-
-def fetch_board_columns(board_id: int):
-    query = f"""
-    query {{
-      boards(ids: {board_id}) {{
-        columns {{
-          id
-          title
-          type
-        }}
-      }}
-    }}
-    """
-    data = run_query(query)
-    return data["data"]["boards"][0]["columns"]
