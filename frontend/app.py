@@ -1,7 +1,10 @@
 # frontend/app.py
 
+import logging
 import streamlit as st
 import requests
+
+logger = logging.getLogger(__name__)
 
 BACKEND_URL = "http://localhost:8000/chat"
 
@@ -26,4 +29,5 @@ if user_input:
             for t in data["trace"]:
                 st.write("-", t)
         else:
+            logger.error(f"Backend error {res.status_code}")
             st.error("Backend error")

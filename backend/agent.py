@@ -2,6 +2,7 @@
 
 import os
 import json
+import logging
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -9,6 +10,8 @@ from google.genai import types
 from .monday_client import get_board_id_by_name, fetch_board_items
 from .normalization import normalize_deals, normalize_work_orders
 from .business_logic import analyze_pipeline_logic, analyze_revenue_logic
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -68,12 +71,15 @@ def execute_tool(tool_name, args, trace):
         quarter = args.get("quarter", "all")
 
         trace.append(f"Fetching Deals board for sector: {sector}")
+        logger.info(f"Tool: {tool_name}, sector: {sector}, quarter: {quarter}")
 
         board_id = get_board_id_by_name("Deal funnel Data")
         items = fetch_board_items(board_id)
         deals = normalize_deals(items)
+        logger.debug(f"Fetched {len(deals)} deals")
 
         result = analyze_pipeline_logic(deals, sector, quarter)
+        logger.info(f"Pipeline result: {result['deal_count']} deals, ${result['total_value']}")
 
         trace.append("Pipeline metrics calculated")
         return result
@@ -83,12 +89,15 @@ def execute_tool(tool_name, args, trace):
         sector = args.get("sector")
 
         trace.append(f"Fetching Work Orders board for sector: {sector}")
+        logger.info(f"Tool: {tool_name}, sector: {sector}")
 
         board_id = get_board_id_by_name("Work_Order_Tracker Data")
         items = fetch_board_items(board_id)
         work_orders = normalize_work_orders(items)
+        logger.debug(f"Fetched {len(work_orders)} work orders")
 
         result = analyze_revenue_logic(work_orders, sector)
+        logger.info(f"Revenue result: ${result['total_revenue']}")
 
         trace.append("Revenue metrics calculated")
         return result
@@ -100,7 +109,7 @@ def execute_tool(tool_name, args, trace):
 # -------- AGENT LOOP --------
 
 def run_agent(user_query: str):
-
+    logger.info(f"Agent started")
     trace = []
 
     history = [
@@ -123,7 +132,7 @@ def run_agent(user_query: str):
 
         # If tool calls exist
         if response.function_calls:
-
+            logger.debug(f"Tools called: {[fc.name for fc in response.function_calls]}")
             for fc in response.function_calls:
 
                 tool_name = fc.name
@@ -164,7 +173,9 @@ def run_agent(user_query: str):
             if hasattr(p, "text") and p.text
         ]
         final_text = "\n".join(text_parts)
+        logger.info("Agent completed successfully")
     else:
         final_text = "No meaningful response generated."
+        logger.warning("No response generated from model")
 
     return final_text, trace

@@ -1,6 +1,9 @@
 import os
+import logging
 import requests
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -21,6 +24,7 @@ def run_query(query: str):
     )
 
     if response.status_code != 200:
+        logger.error(f"Monday API error {response.status_code}: {response.text[:100]}")
         raise Exception(f"Monday API error: {response.text}")
 
     return response.json()
@@ -40,8 +44,10 @@ def get_board_id_by_name(board_name: str):
 
     for board in data["data"]["boards"]:
         if board["name"] == board_name:
+            logger.debug(f"Found board: {board_name}")
             return board["id"]
 
+    logger.error(f"Board not found: {board_name}")
     raise Exception(f"Board '{board_name}' not found")
 
 
