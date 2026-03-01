@@ -64,6 +64,13 @@ def normalize_text(value):
 # -----------------------------
 
 def normalize_deals(items):
+    """
+    Normalize raw deals from Monday.com.
+    
+    Extracts columns by ID, computes weighted values, and flags data quality issues.
+    Output schema: {deal_name, sector, stage, value, probability, weighted_value,
+                    tentative_close_date, owner, client_code, created_date, flags...}
+    """
 
     normalized = []
 
@@ -150,6 +157,14 @@ def normalize_deals(items):
 # -----------------------------
 
 def normalize_work_orders(items):
+    """
+    Normalize raw work orders from Monday.com.
+    
+    Extracts financial columns, computes billing/collection ratios,
+    and flags data quality issues.
+    Output schema: {deal_name, sector, execution_status, amount_excl, billed_excl,
+                    collected, receivable, billing_ratio, collection_ratio, flags...}
+    """
 
     normalized = []
 

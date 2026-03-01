@@ -42,7 +42,21 @@ def filter_by_quarter(date_str: str, quarter_filter: str) -> bool:
 # ===== DYNAMIC QUERY ENGINE =====
 
 def apply_filters(data: list, filters: dict, board_type: str = None) -> list:
-    """Apply flexible filters to data with domain-aware logic."""
+    """
+    Apply flexible filters to data with domain-aware logic.
+    
+    Supports generic field matching plus domain intelligence:
+    - Sector: composite sector mapping (energy → [powerline, renewables])
+    - Quarter: relative date filtering (this_quarter, last_quarter)
+    
+    Args:
+        data: Normalized records list
+        filters: Filter criteria {sector, stage, quarter, ...}
+        board_type: \"deals\" or \"work_orders\" for domain logic
+        
+    Returns:
+        Filtered records list
+    """
     
     if not filters:
         return data
@@ -88,7 +102,23 @@ def apply_filters(data: list, filters: dict, board_type: str = None) -> list:
 
 
 def calculate_metric(data: list, metric: str) -> float:
-    """Calculate a metric from data (e.g., 'sum(value)', 'count')."""
+    """
+    Calculate metric from data (sum, avg, min, max, count).
+    
+    Parses metric string and performs aggregation:
+    - \"count()\" → record count
+    - \"sum(field)\" → sum of field values
+    - \"avg(field)\" → average of field values
+    - \"max(field)\" → maximum value
+    - \"min(field)\" → minimum value
+    
+    Args:
+        data: Records list
+        metric: Metric string specification
+        
+    Returns:
+        Calculated numeric value or None
+    """
     
     if metric == "count" or metric.lower().startswith("count"):
         return len(data)
@@ -121,17 +151,22 @@ def calculate_metric(data: list, metric: str) -> float:
 
 def run_dynamic_query(data: list, filters: dict, group_by: str = None, metrics: list = None, board_type: str = None) -> dict:
     """
-    Execute dynamic query with filtering, grouping, and metrics.
+    Execute dynamic query with filtering, grouping, and aggregation.
+    
+    Core query engine supporting:
+    - Filtering by any field with domain-aware logic
+    - Grouping by any field (sector, stage, owner, etc.)
+    - Dynamic metric calculation (sum, avg, min, max)
     
     Args:
-        data: Normalized records from board
-        filters: Filter criteria (sector, stage, etc.)
-        group_by: Field to group by
-        metrics: List of metrics to calculate ['sum(value)', 'count', 'avg(amount)']
-        board_type: 'deals' or 'work_orders' for domain-aware filtering
-    
+        data: Normalized records
+        filters: Filter criteria dict
+        group_by: Field to group by (optional)
+        metrics: List of metrics to calculate (optional)
+        board_type: \"deals\" or \"work_orders\"
+        
     Returns:
-        Query result with metrics
+        Query result with count, filters_applied, and grouped metrics
     """
     
     # Apply filters

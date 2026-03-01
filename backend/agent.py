@@ -77,7 +77,20 @@ tools = [
 
 
 def execute_tool(args: dict, context: dict, trace: list) -> dict:
-    """Execute dynamic query tool with filter context management."""
+    """
+    Execute dynamic query_data tool with filter persistence.
+    
+    Merges new filters with persistent context and executes queries
+    against normalized Monday.com data with grouping and metrics.
+    
+    Args:
+        args: Tool arguments {board, filters?, group_by?, metrics?}
+        context: Conversation state with persistent filters dict
+        trace: Execution trace for debugging and UI display
+        
+    Returns:
+        Query result dict or {\"error\": str} on failure
+    """
     
     # Merge new filters with persistent context
     context.setdefault("filters", {})
@@ -120,7 +133,19 @@ def execute_tool(args: dict, context: dict, trace: list) -> dict:
 
 
 def run_agent(user_query: str, context: dict) -> tuple:
-    """Run multi-turn agent loop with dynamic queries."""
+    """
+    Execute agentic loop with Google Generative AI tool-calling.
+    
+    Maintains conversation history and iteratively refines responses
+    through tool calls. Implements 5-iteration safety limit.
+    
+    Args:
+        user_query: User's natural language business question
+        context: Conversation context dict {\"filters\": {...}}
+        
+    Returns:
+        (response_text: str, trace: list, updated_context: dict)
+    """
     
     logger.info(f"Starting agent with query: {user_query[:60]}...")
     trace = []

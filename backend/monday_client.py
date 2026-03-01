@@ -11,17 +11,23 @@ MONDAY_API_KEY = os.getenv("MONDAY_API_KEY")
 MONDAY_URL = "https://api.monday.com/v2"
 
 
-def run_query(query: str):
+def run_query(query: str, timeout: int = 10) -> dict:
+    """Execute GraphQL query against Monday.com API with error handling."""
     headers = {
         "Authorization": MONDAY_API_KEY,
         "Content-Type": "application/json"
     }
 
-    response = requests.post(
-        MONDAY_URL,
-        json={"query": query},
-        headers=headers
-    )
+    try:
+        response = requests.post(
+            MONDAY_URL,
+            json={"query": query},
+            headers=headers,
+            timeout=timeout
+        )
+    except requests.Timeout:
+        logger.error(f"Monday API timeout after {timeout}s")
+        raise Exception("Monday API timeout")
 
     if response.status_code != 200:
         logger.error(f"Monday API error {response.status_code}: {response.text[:100]}")
@@ -30,7 +36,7 @@ def run_query(query: str):
     return response.json()
 
 
-def get_board_id_by_name(board_name: str):
+def get_board_id_by_name(board_name: str) -> str:
     query = """
     query {
       boards {
@@ -51,11 +57,12 @@ def get_board_id_by_name(board_name: str):
     raise Exception(f"Board '{board_name}' not found")
 
 
-def fetch_board_items(board_id: int):
+def fetch_board_items(board_id: str, limit: int = 500) -> list:
+    """Fetch items from board with column values."""
     query = f"""
     query {{
       boards(ids: {board_id}) {{
-        items_page(limit: 500) {{
+        items_page(limit: {limit}) {{
           items {{
             id
             name
