@@ -6,7 +6,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-BACKEND_URL = "http://localhost:8000/chat"
+BACKEND_URL = "https://biagent-production.up.railway.app/chat"
 
 st.title("Skylark Drones BI Agent")
 
