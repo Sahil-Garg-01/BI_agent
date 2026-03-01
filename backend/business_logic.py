@@ -2,6 +2,8 @@ from datetime import datetime
 
 
 def map_sector(sector):
+    if not sector:
+        return None
     sector = sector.lower()
 
     if sector == "energy":
@@ -10,56 +12,73 @@ def map_sector(sector):
     return [sector]
 
 
-def filter_this_quarter(deals):
-    now = datetime.now()
-    current_q = (now.month - 1) // 3 + 1
-    year = now.year
+def filter_by_quarter(date_str, quarter_filter):
+    if not date_str or not quarter_filter:
+        return True
+
+    dt = datetime.fromisoformat(date_str)
+
+    current_q = (datetime.now().month - 1) // 3 + 1
+    dt_q = (dt.month - 1) // 3 + 1
+
+    if quarter_filter == "this_quarter":
+        return dt_q == current_q and dt.year == datetime.now().year
+
+    if quarter_filter == "last_quarter":
+        last_q = current_q - 1 if current_q > 1 else 4
+        year = datetime.now().year if current_q > 1 else datetime.now().year - 1
+        return dt_q == last_q and dt.year == year
+
+    return True
+
+
+def analyze_pipeline_logic(deals, filters):
+
+    sector_list = map_sector(filters.get("sector"))
 
     filtered = []
 
     for d in deals:
-        if d["tentative_close_date"]:
-            dt = datetime.fromisoformat(d["tentative_close_date"])
-            dq = (dt.month - 1) // 3 + 1
 
-            if dq == current_q and dt.year == year:
-                filtered.append(d)
+        if sector_list and d["sector"] not in sector_list:
+            continue
 
-    return filtered
+        if not filter_by_quarter(d["tentative_close_date"], filters.get("quarter")):
+            continue
 
+        if filters.get("stage") and d["stage"] != filters["stage"]:
+            continue
 
-def analyze_pipeline_logic(deals, sector, quarter):
-    sectors = map_sector(sector)
-    deals = [d for d in deals if d["sector"] in sectors]
+        filtered.append(d)
 
-    if quarter == "this_quarter":
-        deals = filter_this_quarter(deals)
-
-    total_value = sum(d["value"] for d in deals)
+    total_value = sum(d["value"] for d in filtered)
 
     stage_dist = {}
-    for d in deals:
+    for d in filtered:
         stage = d["stage"] or "Unknown"
         stage_dist[stage] = stage_dist.get(stage, 0) + 1
 
     return {
-        "sector": sector,
-        "deal_count": len(deals),
+        "deal_count": len(filtered),
         "total_value": total_value,
         "stage_distribution": stage_dist
     }
 
 
-def analyze_revenue_logic(work_orders, sector):
-    sectors = map_sector(sector)
-    work_orders = [w for w in work_orders if w["sector"] in sectors]
+def analyze_revenue_logic(work_orders, filters):
+    sector_list = map_sector(filters.get("sector"))
+    filtered = []
 
-    total_billed = sum(w["billed_excl"] for w in work_orders)
-    total_collected = sum(w["collected"] for w in work_orders)
-    total_receivable = sum(w["receivable"] for w in work_orders)
+    for w in work_orders:
+        if sector_list and w["sector"] not in sector_list:
+            continue
+        filtered.append(w)
+
+    total_billed = sum(w["billed_excl"] for w in filtered)
+    total_collected = sum(w["collected"] for w in filtered)
+    total_receivable = sum(w["receivable"] for w in filtered)
 
     return {
-        "sector": sector,
         "total_billed": total_billed,
         "total_collected": total_collected,
         "total_receivable": total_receivable

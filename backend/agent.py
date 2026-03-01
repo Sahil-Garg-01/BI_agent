@@ -36,25 +36,25 @@ tools = [
         function_declarations=[
             types.FunctionDeclaration(
                 name="analyze_pipeline",
-                description="Analyze pipeline health for a given sector and time period",
+                description="Analyze pipeline health",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "sector": {"type": "string"},
+                        "quarter": {"type": "string"},
+                        "stage": {"type": "string"}
+                    }
+                }
+            ),
+            types.FunctionDeclaration(
+                name="analyze_revenue",
+                description="Analyze revenue health",
                 parameters={
                     "type": "object",
                     "properties": {
                         "sector": {"type": "string"},
                         "quarter": {"type": "string"}
-                    },
-                    "required": ["sector"]
-                }
-            ),
-            types.FunctionDeclaration(
-                name="analyze_revenue",
-                description="Analyze revenue health for a given sector",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "sector": {"type": "string"}
-                    },
-                    "required": ["sector"]
+                    }
                 }
             )
         ]
@@ -62,61 +62,55 @@ tools = [
 ]
 
 
-# -------- TOOL EXECUTION --------
+def execute_tool(tool_name, args, context, trace):
 
-def execute_tool(tool_name, args, trace):
+    # Merge with previous filters
+    context.setdefault("filters", {})
+    context["filters"].update({k: v for k, v in args.items() if v})
+
+    filters = context["filters"]
 
     if tool_name == "analyze_pipeline":
-        sector = args.get("sector")
-        quarter = args.get("quarter", "all")
 
-        trace.append(f"Fetching Deals board for sector: {sector}")
-        logger.info(f"Tool: {tool_name}, sector: {sector}, quarter: {quarter}")
+        logger.info(f"filters: {filters}")
+        trace.append(f"Fetching Deals board with filters: {filters}")
 
         board_id = get_board_id_by_name("Deal funnel Data")
         items = fetch_board_items(board_id)
         deals = normalize_deals(items)
         logger.debug(f"Fetched {len(deals)} deals")
 
-        result = analyze_pipeline_logic(deals, sector, quarter)
-        logger.info(f"Pipeline result: {result['deal_count']} deals, ${result['total_value']}")
+        result = analyze_pipeline_logic(deals, filters)
+        logger.info(f"Pipeline result: {result}")
 
         trace.append("Pipeline metrics calculated")
         return result
 
-
     elif tool_name == "analyze_revenue":
-        sector = args.get("sector")
 
-        trace.append(f"Fetching Work Orders board for sector: {sector}")
-        logger.info(f"Tool: {tool_name}, sector: {sector}")
+        trace.append(f"Fetching Work Orders board with filters: {filters}")
+        logger.info(f"filters: {filters}")
 
         board_id = get_board_id_by_name("Work_Order_Tracker Data")
         items = fetch_board_items(board_id)
         work_orders = normalize_work_orders(items)
-        logger.debug(f"Fetched {len(work_orders)} work orders")
 
-        result = analyze_revenue_logic(work_orders, sector)
-        logger.info(f"Revenue result: ${result['total_revenue']}")
+        result = analyze_revenue_logic(work_orders, filters)
+        logger.info(f"Revenue result: {result}")
 
         trace.append("Revenue metrics calculated")
         return result
 
-
     return {}
 
 
-# -------- AGENT LOOP --------
+def run_agent(user_query: str, context: dict):
 
-def run_agent(user_query: str):
-    logger.info(f"Agent started")
+    logger.info(f"Running agent with query: {user_query[:50]}...")
     trace = []
 
     history = [
-        {
-            "role": "user",
-            "parts": [{"text": user_query}]
-        }
+        {"role": "user", "parts": [{"text": user_query}]}
     ]
 
     while True:
@@ -130,35 +124,26 @@ def run_agent(user_query: str):
             )
         )
 
-        # If tool calls exist
         if response.function_calls:
-            logger.debug(f"Tools called: {[fc.name for fc in response.function_calls]}")
+
             for fc in response.function_calls:
 
-                tool_name = fc.name
-                args = fc.args
-
-                # Append model tool call
                 history.append({
                     "role": "model",
                     "parts": [{
                         "function_call": {
-                            "name": tool_name,
-                            "args": args
+                            "name": fc.name,
+                            "args": fc.args
                         }
                     }]
                 })
 
-                result = execute_tool(tool_name, args, trace)
+                result = execute_tool(fc.name, fc.args, context, trace)
 
-                # Append tool response as user message (valid for google.genai SDK)
                 history.append({
                     "role": "user",
                     "parts": [{
-                        "function_response": {
-                            "name": tool_name,
-                            "response": result
-                        }
+                        "text": json.dumps(result)
                     }]
                 })
 
@@ -166,16 +151,6 @@ def run_agent(user_query: str):
 
         break
 
-    # Extract final text
-    if response.candidates and response.candidates[0].content.parts:
-        text_parts = [
-            p.text for p in response.candidates[0].content.parts
-            if hasattr(p, "text") and p.text
-        ]
-        final_text = "\n".join(text_parts)
-        logger.info("Agent completed successfully")
-    else:
-        final_text = "No meaningful response generated."
-        logger.warning("No response generated from model")
+    final_text = response.text or "No meaningful response generated."
 
-    return final_text, trace
+    return final_text, trace, context
