@@ -18,8 +18,7 @@ load_dotenv()
 client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
 SYSTEM_PROMPT = """
-You are a Business Intelligence AI Agent for Skylark Drones.
-
+You are a BI Agent for Skylark Drones. Your goal: provide founder-level insights fast.
 You answer executive-level business questions using LIVE monday.com data.
 
 Rules:
