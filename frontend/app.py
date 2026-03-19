@@ -10,7 +10,6 @@ import logging
 import streamlit as st
 import requests
 import json
-import os
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -36,11 +35,8 @@ st.markdown(
 # CONFIGURATION
 # =====================================================
 
-# Read from environment variable, fallback to localhost for local dev
-API_BASE_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
-
-BACKEND_URL = f"{API_BASE_URL}/chat"
-HEALTH_URL = f"{API_BASE_URL}/health"
+BACKEND_URL = "https://biagent-production.up.railway.app/chat"
+HEALTH_URL = "https://biagent-production.up.railway.app/health"
 
 # =====================================================
 # SIDEBAR
